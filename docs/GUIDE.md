@@ -147,6 +147,8 @@ Version 0 is a frozen pretrained image encoder plus a small MLP you write. It's 
 
 **Predict, then run.** Work out the head's trainable parameter count by hand before the test prints it.
 
+> Answer: 198,146 parameters.
+
 ## 5 · The behavior cloning loss
 
 MSE on normalized actions, which is maximum likelihood under the Gaussian policy from section 4.

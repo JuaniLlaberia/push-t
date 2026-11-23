@@ -23,7 +23,6 @@ class BCPolicy(nn.Module):
         action_dim: action size.
         chunk_size: None for one action per call, K for K actions per call (section 10).
     """
-
     def __init__(
         self,
         encoder: nn.Module | None = None,
@@ -33,7 +32,30 @@ class BCPolicy(nn.Module):
         action_dim: int = 2,
         chunk_size: int | None = None,
     ):
-        raise NotImplementedError("TODO(core): see guide sections 4 and 10")
+        """
+        Store the encoder and build the MLP head (feat_dim + state_dim) -> hidden -> hidden -> out_dim.
+
+        Args:
+            encoder: maps (B, 3, H, W) normalized images to (B, feat_dim), or None for cached features.
+            feat_dim: encoder output size.
+            state_dim: pusher state size.
+            hidden_dim: width of the two hidden layers.
+            action_dim: size of one action.
+            chunk_size: None for one action per call, K for K actions per call (out_dim = K * action_dim).
+        """
+        super().__init__()
+
+        self.encoder = encoder
+        self.out_dim = action_dim if chunk_size is None else chunk_size * action_dim
+        self.head = nn.Sequential(
+            nn.Linear(in_features=feat_dim + state_dim, out_features=hidden_dim),
+            nn.ReLU(),
+            nn.Linear(in_features=hidden_dim, out_features=hidden_dim),
+            nn.ReLU(),
+            nn.Linear(in_features=hidden_dim, out_features=self.out_dim)
+        )
+        self.chunk_size = chunk_size
+        self.action_dim = action_dim
 
     def forward(self, obs_feat_or_image: torch.Tensor, state_norm: torch.Tensor) -> torch.Tensor:
         """
@@ -45,4 +67,16 @@ class BCPolicy(nn.Module):
         Returns:
             (B, 2), or (B, K, 2) when chunk_size=K, in normalized action units.
         """
-        raise NotImplementedError("TODO(core): see guide sections 4 and 10")
+        if self.encoder is not None:
+            x = self.encoder(obs_feat_or_image)
+        else:
+            x = obs_feat_or_image
+
+        x = torch.cat([x, state_norm], dim=-1)
+        x = self.head(x)
+
+        if self.chunk_size is None:
+            return x
+        else:
+            return x.reshape(x.shape[0], self.chunk_size, self.action_dim)
+
