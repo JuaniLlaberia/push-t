@@ -94,6 +94,8 @@ Validation loss is only a sanity check here. The number that counts is the succe
 
 **Predict, then run (optional, 10 minutes).** Once section 6 works, train once with a random frame split. Before you do, write down whether its validation loss will be lower or higher than with the episode split, and why.
 
+> Answer: Needs section 6.
+
 ## 3 · Normalization
 
 Normalization is the most common source of silent bugs in robot learning. Get it right once, and use the same object at training and at evaluation.
