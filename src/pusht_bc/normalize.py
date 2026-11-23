@@ -8,6 +8,26 @@ class Normalizer:
 
     The same object is used in training and evaluation (guide section 3).
     """
+    def __init__(self,
+                 state_min,
+                 state_max,
+                 action_min,
+                 action_max):
+        """
+        Store the min-max stats as float32 tensors and set the ImageNet constants.
+
+        Args:
+            state_min: (2,) array-like, per-dimension minimum of observation.state.
+            state_max: (2,) array-like, per-dimension maximum of observation.state.
+            action_min: (2,) array-like, per-dimension minimum of action.
+            action_max: (2,) array-like, per-dimension maximum of action.
+        """
+        self.state_min = torch.as_tensor(state_min, dtype=torch.float32)
+        self.state_max = torch.as_tensor(state_max, dtype=torch.float32)
+        self.action_min = torch.as_tensor(action_min, dtype=torch.float32)
+        self.action_max = torch.as_tensor(action_max, dtype=torch.float32)
+        self.imgnet_mean = torch.as_tensor([0.485, 0.456, 0.406], dtype=torch.float32).view(3, 1, 1)
+        self.imgnet_std = torch.as_tensor([0.229, 0.224, 0.225], dtype=torch.float32).view(3, 1, 1)
 
     @classmethod
     def from_stats(cls, stats: dict) -> "Normalizer":
@@ -21,7 +41,10 @@ class Normalizer:
         Returns:
             The Normalizer.
         """
-        raise NotImplementedError("TODO(core): see guide section 3")
+        return cls(stats["observation.state"]["min"],
+                   stats["observation.state"]["max"],
+                   stats["action"]["min"],
+                   stats["action"]["max"])
 
     def normalize_state(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -32,7 +55,13 @@ class Normalizer:
         Returns:
             (..., 2) in [-1, 1], on the input's device.
         """
-        raise NotImplementedError("TODO(core): see guide section 3")
+        EPSILON = 1e-8
+        x_min = self.state_min.to(x)
+        x_max = self.state_max.to(x)
+
+        x_norm = 2 * ((x - x_min) / (x_max - x_min + EPSILON)) - 1
+
+        return x_norm
 
     def normalize_action(self, a: torch.Tensor) -> torch.Tensor:
         """
@@ -42,8 +71,14 @@ class Normalizer:
             a: (..., 2) raw action.
         Returns:
             (..., 2) in [-1, 1], on the input's device.
-        """
-        raise NotImplementedError("TODO(core): see guide section 3")
+        """        
+        EPSILON = 1e-8
+        a_min = self.action_min.to(a)
+        a_max = self.action_max.to(a)
+        
+        a_norm = 2 * ((a - a_min) / (a_max - a_min + EPSILON)) - 1
+        
+        return a_norm
 
     def unnormalize_action(self, a_norm: torch.Tensor) -> torch.Tensor:
         """
@@ -54,8 +89,14 @@ class Normalizer:
         Returns:
             (..., 2) raw action (env units), on the input's device.
         """
-        raise NotImplementedError("TODO(core): see guide section 3")
-
+        EPSILON = 1e-8
+        a_min = self.action_min.to(a_norm)
+        a_max = self.action_max.to(a_norm)
+                
+        a = ((a_norm + 1) / 2) * (a_max - a_min + EPSILON) + a_min
+        
+        return a
+        
     def normalize_image(self, img: torch.Tensor) -> torch.Tensor:
         """
         ImageNet-normalize images.
@@ -65,7 +106,7 @@ class Normalizer:
         Returns:
             ImageNet-normalized images, same shape and device.
         """
-        raise NotImplementedError("TODO(core): see guide section 3")
+        return (img -  self.imgnet_mean.to(img)) / self.imgnet_std.to(img)
 
     def state_dict(self) -> dict:
         """
@@ -76,4 +117,7 @@ class Normalizer:
         Returns:
             Dict of stats.
         """
-        raise NotImplementedError("TODO(core): see guide section 3")
+        return {
+            "observation.state": {"min": self.state_min.clone(), "max": self.state_max.clone()}, 
+            "action": {"min": self.action_min.clone(), "max": self.action_max.clone()}
+        }
