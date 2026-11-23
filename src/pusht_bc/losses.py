@@ -14,4 +14,17 @@ def bc_loss(pred: torch.Tensor, target: torch.Tensor, mask: torch.Tensor | None 
     Returns:
         Scalar tensor; 0 if there are no real elements.
     """
-    raise NotImplementedError("TODO(core): see guide section 5")
+    if kind == "mse":
+        err = (target - pred) ** 2
+    elif kind == "l1":
+        err = torch.abs(target - pred)
+    else:
+        raise ValueError("Loss 'kind' must be either 'mse' or 'l1'")
+
+    if mask is not None:
+        err = err[mask]
+
+    if err.numel() == 0:
+        return err.sum()
+
+    return err.mean()
