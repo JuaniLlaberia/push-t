@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pusht_bc"
 version = "0.1.0"
-description = "Behavior cloning on Push-T (step 5)"
+description = "Behavior cloning on Push-T, evaluated closed loop against the pretrained Diffusion Policy"
 requires-python = ">=3.10,<3.14"
 dependencies = [
     "lerobot[pusht,diffusion]==0.7.0",

@@ -1,0 +1,23 @@
+name: e3_frac50
+seed: 0
+dataset_repo_id: lerobot/pusht
+val_fraction: 0.1
+train_episode_fraction: 0.5
+use_cached_features: true
+cache_path: data/cache/features_resnet18.pt
+freeze_encoder: true
+crop: null
+hidden_dim: 256
+chunk_size: null
+n_execute: null
+loss: mse
+batch_size: 256
+lr: 1.0e-3
+weight_decay: 1.0e-4
+epochs: 50
+eval:
+  dev_seeds: [0, 49]        # inclusive range
+  final_seeds: [1000, 1199] # inclusive range
+  max_steps: 300
+  record_seeds: [0, 1, 2]
+output_dir: runs

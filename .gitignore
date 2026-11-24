@@ -7,3 +7,8 @@ runs/*
 !runs/.gitkeep
 data/cache/*
 !data/cache/.gitkeep
+
+# private study notes, not published
+docs/GUIDE.md
+docs/CHECKLIST.md
+SCAFFOLD_SPEC.md
