@@ -16,8 +16,6 @@ from pusht_bc.train import compute_val_loss, train_one_epoch
 
 pytestmark = pytest.mark.core
 
-skip_queue = pytest.mark.skip(reason="executing n_execute actions per predicted chunk is not implemented in BCAgent")
-
 K = 8
 CHUNK = torch.stack([torch.linspace(-0.9, 0.9, K), torch.linspace(0.9, -0.9, K)], dim=1)
 
@@ -33,7 +31,6 @@ def _obs():
 def _expected(normalizer, j):
     return normalizer.unnormalize_action(CHUNK[j]).numpy()
 
-@skip_queue
 def test_model_called_once_every_n_execute(normalizer, device):
     model = ConstantModel(CHUNK).to(device)
     agent = BCAgent(model, normalizer, device, n_execute=4)
@@ -45,7 +42,6 @@ def test_model_called_once_every_n_execute(normalizer, device):
         assert a.shape == (2,)
         assert np.allclose(a, _expected(normalizer, t % 4), atol=1e-3), t
 
-@skip_queue
 @pytest.mark.parametrize("n_execute, steps, calls", [(8, 16, 2), (1, 5, 5), (3, 7, 3)])
 def test_other_n_execute(normalizer, device, n_execute, steps, calls):
     model = ConstantModel(CHUNK).to(device)
@@ -56,7 +52,6 @@ def test_other_n_execute(normalizer, device, n_execute, steps, calls):
         agent.act(obs)
     assert model.calls == calls
 
-@skip_queue
 def test_reset_forces_new_prediction(normalizer, device):
     model = ConstantModel(CHUNK).to(device)
     agent = BCAgent(model, normalizer, device, n_execute=4)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+from collections import deque
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -169,21 +170,27 @@ class BCAgent:
         self.device = device
         self.image_transform = image_transform
         self.n_execute = n_execute
+        self.queue: deque[np.ndarray] = deque()
 
     def reset(self) -> None:
         """
-        Clear any per-episode state.
+        Clear the queue of pending actions, so the next act() predicts from scratch.
         """
+        self.queue.clear()
 
     def act(self, obs_batch: dict) -> np.ndarray:
         """
-        Choose the next action.
+        Choose the next action. A chunked model predicts K actions at once; the first
+        n_execute are queued and executed before the next prediction.
 
         Args:
             obs_batch: output of env_obs_to_batch (no batch dim).
         Returns:
             (2,) float action in env units, clipped to [0, 512].
         """
+        if self.queue:
+            return self.queue.popleft()
+
         image = obs_batch["observation.image"]
         state = obs_batch["observation.state"]
 
@@ -195,9 +202,13 @@ class BCAgent:
 
         with torch.no_grad():
             pred = self.model(normalized_image, normalized_state)
-            pred_unnormalized = self.normalizer.unnormalize_action(pred)[0]
+        actions = np.clip(self.normalizer.unnormalize_action(pred)[0].cpu().numpy(), 0, 512)
 
-            return np.clip(pred_unnormalized.cpu().numpy(), 0, 512)
+        if actions.ndim == 1:
+            return actions
+
+        self.queue.extend(actions[: self.n_execute])
+        return self.queue.popleft()
 
 def rollout(agent, env, seed: int, max_steps: int = 300, record: bool = False) -> EpisodeResult:
     """

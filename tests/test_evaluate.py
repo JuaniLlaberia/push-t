@@ -129,3 +129,11 @@ def test_bcagent_through_rollout(normalizer, device):
     assert res.steps == 6
     mid = (ACTION_MIN + ACTION_MAX) / 2
     assert all(np.allclose(a, mid, atol=1e-3) for a in env.actions)
+
+def test_rollout_uses_coverage_not_reward():
+    # coverage 0.92 gives reward 0.968 in gym-pusht: a near miss, not a success
+    env = FakePushTEnv([0.5, 0.92], terminate_at_success=True)
+    res = rollout(FixedAgent(action=(100.0, 200.0)), env, seed=0, max_steps=10)
+    assert not res.success
+    assert res.max_coverage == pytest.approx(0.92)
+    assert res.steps == 10
