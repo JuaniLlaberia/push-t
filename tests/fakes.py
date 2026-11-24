@@ -6,15 +6,18 @@ from torch import nn
 
 class FakePushTEnv:
     """
-    Gymnasium-like env that plays back scripted rewards (coverage).
+    Gymnasium-like env that plays back scripted coverage values.
+
+    Like gym-pusht 0.1.8, step() returns reward = clip(coverage / 0.95, 0, 1) and puts the
+    coverage itself in info["coverage"], so code that treats the reward as coverage fails.
 
     After the script runs out, the last reward repeats. Observations match gym-pusht:
     "pixels" uint8 (96, 96, 3), "agent_pos" float64 (2,). Every action received is stored
     in self.actions (current episode) and self.all_actions; reset seeds in self.reset_seeds.
 
     Args:
-        rewards: per-step rewards, or {seed: list} for seed-dependent episodes.
-        terminate_at_success: terminated=True when reward >= 0.95.
+        rewards: per-step coverage values, or {seed: list} for seed-dependent episodes.
+        terminate_at_success: terminated=True when coverage >= 0.95.
         truncate_after: truncated=True at this step count (None = never).
     """
 
@@ -50,11 +53,12 @@ class FakePushTEnv:
         a = np.asarray(action, dtype=np.float64).copy()
         self.actions.append(a)
         self.all_actions.append(a)
-        reward = self._rewards[min(self.t, len(self._rewards) - 1)]
+        coverage = self._rewards[min(self.t, len(self._rewards) - 1)]
+        reward = float(np.clip(coverage / 0.95, 0.0, 1.0))
         self.t += 1
-        terminated = bool(self.terminate_at_success and reward >= 0.95)
+        terminated = bool(self.terminate_at_success and coverage >= 0.95)
         truncated = bool(self.truncate_after is not None and self.t >= self.truncate_after)
-        info = {"coverage": reward, "is_success": reward >= 0.95}
+        info = {"coverage": coverage, "is_success": coverage >= 0.95}
         return self._obs(), reward, terminated, truncated, info
 
     def render(self) -> np.ndarray:

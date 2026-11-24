@@ -144,8 +144,7 @@ def load_cache(cache_path: str | Path) -> dict:
     p = resolve_path(cache_path)
     if not p.exists():
         raise FileNotFoundError(
-            f"feature cache not found: {p}. Run `python scripts/cache_features.py` first "
-            "(needs the Normalizer from guide section 3)."
+            f"feature cache not found: {p}. Run `python scripts/cache_features.py` first."
         )
     return _load_cache_cached(str(p), p.stat().st_mtime)
 

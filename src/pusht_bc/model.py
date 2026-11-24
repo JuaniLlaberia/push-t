@@ -5,23 +5,10 @@ from torch import nn
 
 class BCPolicy(nn.Module):
     """
-    Deterministic BC policy: image features (+ pusher state) -> normalized action(s) (guide sections 4 and 10).
+    Deterministic BC policy: image features + pusher state -> normalized action(s).
 
-    Attribute convention (used by checkpoint loading):
-        self.encoder: nn.Module or None (None = inputs are cached (B, 512) features).
-        self.head: nn.Module holding every parameter that is not the encoder's.
-        self.chunk_size: int or None, as passed to __init__.
-    save_checkpoint stores only the head (and a trained encoder); load_policy_for_eval
-    rebuilds BCPolicy(encoder=..., hidden_dim=cfg.hidden_dim, chunk_size=cfg.chunk_size)
-    and loads those weights back.
-
-    Args:
-        encoder: maps (B, 3, H, W) normalized images to (B, feat_dim), or None.
-        feat_dim: encoder output size.
-        state_dim: pusher state size.
-        hidden_dim: hidden width.
-        action_dim: action size.
-        chunk_size: None for one action per call, K for K actions per call (section 10).
+    Checkpoints store self.head (every non-encoder parameter) and, only if it was trained,
+    self.encoder; self.encoder is None when the inputs are cached (B, 512) features.
     """
     def __init__(
         self,

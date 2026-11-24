@@ -29,7 +29,7 @@ def make_env(max_steps: int = 300):
         gymnasium env.
     """
     import gymnasium as gym
-    import gym_pusht
+    import gym_pusht  # noqa: F401  (registers gym_pusht/PushT-v0)
 
     return gym.make(
         "gym_pusht/PushT-v0",
@@ -91,10 +91,10 @@ def binomial_ci(successes: int, n: int, z: float = 1.96) -> tuple[float, float]:
     """
     if n <= 0:
         return 0.0, 1.0
-    
+
     if not 0 <= successes <= n:
         raise ValueError(f"successes must be in [0, n], got {successes} / {n}")
-    
+
     p = successes / n
     z2 = z * z
     denom = 1.0 + z2 / n
@@ -117,7 +117,7 @@ def load_policy_for_eval(checkpoint_path, device) -> tuple[nn.Module, dict]:
 
     model = BCPolicy(encoder=make_resnet18_encoder(), hidden_dim=cfg.hidden_dim, chunk_size=cfg.chunk_size)
     model.head.load_state_dict(ckpt["head"])
-    
+
     if ckpt.get("encoder") is not None:
         model.encoder.load_state_dict(ckpt["encoder"])
 
@@ -149,9 +149,9 @@ def build_agent_from_checkpoint(checkpoint_path, device=None) -> "BCAgent":
 
 class BCAgent:
     """
-    Wraps a trained BCPolicy for closed-loop use (guide sections 7 and 10).
+    Wraps a trained BCPolicy for closed-loop use.
 
-    Same interface as policies.pretrained_dp.PretrainedDiffusionAgent: reset() and act().
+    Same interface as PretrainedDiffusionAgent: reset() and act().
 
     Args:
         model: BCPolicy with its encoder attached (takes (B, 3, H, W) normalized images).
@@ -164,8 +164,6 @@ class BCAgent:
             None for a non-chunked model.
     """
     def __init__(self, model, normalizer, device, image_transform=None, n_execute: int | None = None):
-        """
-        """
         self.model = model
         self.normalizer = normalizer
         self.device = device
@@ -198,17 +196,16 @@ class BCAgent:
         with torch.no_grad():
             pred = self.model(normalized_image, normalized_state)
             pred_unnormalized = self.normalizer.unnormalize_action(pred)[0]
-            
+
             return np.clip(pred_unnormalized.cpu().numpy(), 0, 512)
 
 def rollout(agent, env, seed: int, max_steps: int = 300, record: bool = False) -> EpisodeResult:
     """
-    Run one seeded episode. Success = max coverage >= 0.95 (guide section 7).
+    Run one seeded episode. Success = max coverage >= 0.95.
 
     The episode starts from env.reset(seed=seed) with a freshly reset agent and ends when
     the env terminates or truncates, or after max_steps steps, whichever comes first.
-    The coverage of each step is read from info["coverage"]; gym-pusht's reward is
-    clip(coverage / 0.95, 0, 1), so it can't be used as coverage.
+    Coverage is read from info["coverage"]: gym-pusht's reward is clip(coverage / 0.95, 0, 1).
 
     Args:
         agent: object with reset() and act(obs_batch).
@@ -217,8 +214,8 @@ def rollout(agent, env, seed: int, max_steps: int = 300, record: bool = False) -
         max_steps: step cap.
         record: keep frames.
     Returns:
-        EpisodeResult with one reward per step taken (len(rewards) == steps) and frames as
-        a list of uint8 (H, W, 3) images if record, else None.
+        EpisodeResult with the coverage of each step taken in rewards, and frames
+        (uint8 (H, W, 3) images) if record, else None.
     """
     agent.reset()
     obs, _ = env.reset(seed=seed)
@@ -250,7 +247,7 @@ def rollout(agent, env, seed: int, max_steps: int = 300, record: bool = False) -
 
 def evaluate(agent, env, seeds: list[int], record_seeds: tuple[int, ...] = ()) -> EvalSummary:
     """
-    Run rollout for each seed; aggregate success rate (+ binomial_ci) and average max coverage (guide section 7).
+    Run one rollout per seed and aggregate success rate, its 95% interval and average max coverage.
 
     Args:
         agent: object with reset() and act(obs_batch).
@@ -345,7 +342,7 @@ def run_and_save(agent, seeds: list[int], record_seeds=(), out_dir=None, max_ste
         out.mkdir(parents=True, exist_ok=True)
         with open(out / "summary.json", "w", encoding="utf-8") as f:
             json.dump({"label": label, "max_steps": max_steps, **summary_to_dict(summary)}, f, indent=2)
-        
+
         curves = {}
         for ep in summary.episodes:
             if ep.frames:
@@ -355,7 +352,7 @@ def run_and_save(agent, seeds: list[int], record_seeds=(), out_dir=None, max_ste
                 curves[f"seed {ep.seed} ({tag})"] = ep.rewards
         if curves:
             plot_coverage_over_time(curves, out / "coverage.png")
-            
+
     return summary
 
 def format_summary(summary: EvalSummary, label: str = "") -> str:

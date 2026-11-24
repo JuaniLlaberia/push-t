@@ -55,13 +55,13 @@ class Config:
         seed: seed for the split, subsampling, shuffling and initialization.
         dataset_repo_id: LeRobot dataset on the Hugging Face Hub.
         val_fraction: fraction of episodes held out for validation.
-        train_episode_fraction: fraction of training episodes actually used (E3).
+        train_episode_fraction: fraction of training episodes actually used.
         use_cached_features: train on cached ResNet-18 features instead of images.
         cache_path: feature cache written by scripts/cache_features.py.
         freeze_encoder: keep the ResNet-18 frozen (image path only can set False).
         crop: crop size for the image path (random in training, center at eval), or None.
         hidden_dim: MLP hidden width.
-        chunk_size: actions predicted per call (section 10), or None.
+        chunk_size: actions predicted per call (action chunking), or None.
         n_execute: actions executed per predicted chunk; required with chunk_size.
         loss: "mse" or "l1".
         batch_size: batch size.
@@ -70,7 +70,7 @@ class Config:
         epochs: training epochs.
         eval: evaluation settings.
         output_dir: root folder for runs.
-        num_workers: DataLoader workers for the image path (not in bc_v0.yaml; 0 = main process).
+        num_workers: DataLoader workers for the image path (0 = main process).
     """
 
     name: str = "bc_v0"

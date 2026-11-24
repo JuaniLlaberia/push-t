@@ -48,7 +48,7 @@ def build_model(cfg: Config, device: torch.device) -> BCPolicy:
 
     if not cfg.use_cached_features:
         encoder = make_resnet18_encoder(pretrained=True, frozen=cfg.freeze_encoder)
-    
+
     model = BCPolicy(encoder=encoder, hidden_dim=cfg.hidden_dim, chunk_size=cfg.chunk_size)
     return model.to(device)
 
@@ -65,7 +65,7 @@ def build_optimizer(cfg: Config, model: nn.Module) -> torch.optim.Optimizer:
     params = [p for p in model.parameters() if p.requires_grad]
     if not params:
         raise ValueError("model has no trainable parameters")
-    
+
     return torch.optim.AdamW(params, lr=cfg.lr, weight_decay=cfg.weight_decay)
 
 def build_normalizer(dataset_stats: dict) -> Normalizer:
@@ -81,7 +81,7 @@ def build_normalizer(dataset_stats: dict) -> Normalizer:
 
 def train_one_epoch(model, loader, optimizer, normalizer, device, loss_kind: str = "mse", step_losses: list | None = None) -> float:
     """
-    One pass over loader (guide section 6).
+    One training pass over loader.
 
     Args:
         model: BCPolicy.
@@ -105,7 +105,7 @@ def train_one_epoch(model, loader, optimizer, normalizer, device, loss_kind: str
         else:
             features = batch["observation.image"].to(device)
             features = normalizer.normalize_image(features)
-        
+
         state = batch["observation.state"].to(device)
         action = batch["action"].to(device)
 
@@ -132,7 +132,7 @@ def train_one_epoch(model, loader, optimizer, normalizer, device, loss_kind: str
 
 def compute_val_loss(model, loader, normalizer, device, loss_kind: str = "mse") -> float:
     """
-    Mean loss over loader without updating parameters (guide section 6).
+    Mean loss over loader without updating parameters.
 
     Args:
         model: BCPolicy.
@@ -154,62 +154,49 @@ def compute_val_loss(model, loader, normalizer, device, loss_kind: str = "mse") 
             else:
                 features = batch["observation.image"].to(device)
                 features = normalizer.normalize_image(features)
-                    
+
             state = batch["observation.state"].to(device)
             action = batch["action"].to(device)
-            
+
             state_normalized = normalizer.normalize_state(state)
             action_normalized = normalizer.normalize_action(action)
-            
+
             pred = model(features, state_normalized)
-            
+
             if "action_is_pad" in batch:
                 mask = ~batch["action_is_pad"].to(device)
             else:
                 mask = None
-            
+
             loss = bc_loss(pred, action_normalized, kind=loss_kind, mask=mask)
             mean_loss.append(loss.item())
-                
+
         return sum(mean_loss) / len(mean_loss)
 
 def train(cfg: Config) -> TrainResult:
     """
-    Build data/model/optimizer via the provided factories, run cfg.epochs, log history
-    (train loss per step, val loss per epoch), save a checkpoint every epoch (guide section 6).
-
-    Provided plumbing: data.load_episode_indices(cfg), data.load_dataset_stats(cfg),
-    data.make_dataloaders(cfg, train_eps, val_eps), split.split_episodes,
-    utils.set_seed, utils.get_device, utils.save_checkpoint, utils.checkpoint_path,
-    and build_model, build_optimizer, build_normalizer in this module.
+    Train a policy for cfg.epochs, logging train loss per step and val loss per epoch,
+    and saving a checkpoint every epoch.
 
     Args:
         cfg: experiment config.
     Returns:
         TrainResult.
     """
-    # Set seed
     set_seed(cfg.seed)
-    # Get device
     device = get_device()
-    # Get episodes indices
+
     episodes_indices = load_episode_indices(cfg)
-    # Prepare data loaders (both for train and validation)
     train_episodes, val_episodes = split_episodes(episodes_indices, cfg.val_fraction, seed=cfg.seed)
     train_loader, val_loader = make_dataloaders(cfg, train_episodes, val_episodes)
-    # Prepare normalizer
-    dataset_stats = load_dataset_stats(cfg)
-    normalizer = build_normalizer(dataset_stats)
-    # Load model
+    normalizer = build_normalizer(load_dataset_stats(cfg))
     model = build_model(cfg, device)
-    # Build optimizer
     optimizer = build_optimizer(cfg, model)
 
     history = {"train_loss": [], "val_loss": []}
     checkpoint_paths = []
 
     for epoch in range(1, cfg.epochs + 1):
-        # Train and get loss
         epoch_loss = train_one_epoch(
             model=model,
             loader=train_loader,
@@ -219,7 +206,6 @@ def train(cfg: Config) -> TrainResult:
             loss_kind=cfg.loss,
             step_losses=history["train_loss"]
         )
-        # Compute validation loss
         val_epoch_loss = compute_val_loss(
             model=model,
             normalizer=normalizer,
@@ -230,8 +216,7 @@ def train(cfg: Config) -> TrainResult:
         history["val_loss"].append(val_epoch_loss)
 
         print(f"epoch {epoch}/{cfg.epochs} | train {epoch_loss:.4f} | val {val_epoch_loss:.4f}")
-        
-        # Save training checkpoint
+
         path = save_checkpoint(
             path=checkpoint_path(cfg, epoch),
             model=model,

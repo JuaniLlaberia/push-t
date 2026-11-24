@@ -6,7 +6,7 @@ class Normalizer:
     """
     Min-max normalization of state and action to [-1, 1]; ImageNet normalization of images.
 
-    The same object is used in training and evaluation (guide section 3).
+    The same stats are used in training and evaluation (they are saved in each checkpoint).
     """
     def __init__(self,
                  state_min,
@@ -71,13 +71,13 @@ class Normalizer:
             a: (..., 2) raw action.
         Returns:
             (..., 2) in [-1, 1], on the input's device.
-        """        
+        """
         EPSILON = 1e-8
         a_min = self.action_min.to(a)
         a_max = self.action_max.to(a)
-        
+
         a_norm = 2 * ((a - a_min) / (a_max - a_min + EPSILON)) - 1
-        
+
         return a_norm
 
     def unnormalize_action(self, a_norm: torch.Tensor) -> torch.Tensor:
@@ -92,11 +92,11 @@ class Normalizer:
         EPSILON = 1e-8
         a_min = self.action_min.to(a_norm)
         a_max = self.action_max.to(a_norm)
-                
+
         a = ((a_norm + 1) / 2) * (a_max - a_min + EPSILON) + a_min
-        
+
         return a
-        
+
     def normalize_image(self, img: torch.Tensor) -> torch.Tensor:
         """
         ImageNet-normalize images.
@@ -118,6 +118,6 @@ class Normalizer:
             Dict of stats.
         """
         return {
-            "observation.state": {"min": self.state_min.clone(), "max": self.state_max.clone()}, 
+            "observation.state": {"min": self.state_min.clone(), "max": self.state_max.clone()},
             "action": {"min": self.action_min.clone(), "max": self.action_max.clone()}
         }

@@ -4,7 +4,7 @@ import torch
 
 def bc_loss(pred: torch.Tensor, target: torch.Tensor, mask: torch.Tensor | None = None, kind: str = "mse") -> torch.Tensor:
     """
-    Behavior-cloning loss: mean over real elements only (guide section 5).
+    Behavior-cloning loss, averaged over real (unmasked) elements only.
 
     Args:
         pred: (B, 2) or (B, K, 2).

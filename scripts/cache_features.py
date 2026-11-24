@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import sys
 import time
 
 import torch
@@ -20,7 +19,7 @@ def main() -> None:
     Precompute frozen ResNet-18 features for every frame of lerobot/pusht.
 
     Usage: python scripts/cache_features.py [--batch-size 128] [--out data/cache/features_resnet18.pt]
-    Pipeline per frame: image -> Normalizer.normalize_image (guide section 3) -> frozen
+    Pipeline per frame: image -> Normalizer.normalize_image -> frozen
     ResNet-18 -> (512,). Saves features (N, 512) float32, state (N, 2), action (N, 2),
     episode_index (N,), frame_index (N,), index (N,), stats (dataset stats) and meta.
     Row i = dataset frame i.
@@ -34,15 +33,7 @@ def main() -> None:
 
     dataset = load_dataset(args.repo_id)
     stats = dataset.meta.stats
-    try:
-        normalizer = Normalizer.from_stats(stats)
-        normalizer.normalize_image(torch.zeros(1, 3, 96, 96))
-    except NotImplementedError as e:
-        sys.exit(
-            f"cache_features.py needs your Normalizer ({e}).\n"
-            "Implement Normalizer.from_stats and normalize_image (guide section 3), "
-            "check `pytest -m core tests/test_normalize.py`, then rerun this script."
-        )
+    normalizer = Normalizer.from_stats(stats)
 
     device = get_device()
     encoder = make_resnet18_encoder(pretrained=True, frozen=True).to(device)

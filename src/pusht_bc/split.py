@@ -3,7 +3,7 @@ import random
 
 def split_episodes(episode_indices: list[int], val_fraction: float, seed: int) -> tuple[list[int], list[int]]:
     """
-    Split episodes into train and validation sets (guide section 2).
+    Split episodes (not frames) into train and validation sets.
 
     Contract: deterministic for a given seed; disjoint; together cover all inputs;
     len(val) == max(1, round(len(episode_indices) * val_fraction)); both lists sorted, plain ints.
