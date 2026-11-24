@@ -207,7 +207,8 @@ def rollout(agent, env, seed: int, max_steps: int = 300, record: bool = False) -
 
     The episode starts from env.reset(seed=seed) with a freshly reset agent and ends when
     the env terminates or truncates, or after max_steps steps, whichever comes first.
-    The reward of each step is the current coverage.
+    The coverage of each step is read from info["coverage"]; gym-pusht's reward is
+    clip(coverage / 0.95, 0, 1), so it can't be used as coverage.
 
     Args:
         agent: object with reset() and act(obs_batch).
@@ -227,9 +228,10 @@ def rollout(agent, env, seed: int, max_steps: int = 300, record: bool = False) -
     for _ in range(max_steps):
         batch = env_obs_to_batch(obs)
         action = agent.act(batch)
-        obs, reward, terminated, truncated, _ = env.step(action)
+        obs, _, terminated, truncated, info = env.step(action)
 
-        rewards.append(float(reward))
+        # gym-pusht's reward is clip(coverage / 0.95, 0, 1), not the coverage itself
+        rewards.append(float(info["coverage"]))
         if record:
             frames.append(env.render())
 
