@@ -11,7 +11,7 @@ import torch
 from torch import nn
 
 from .config import resolve_path
-from .data import make_image_transform
+from .data import make_image_transform, env_obs_to_batch
 from .encoders import make_resnet18_encoder
 from .model import BCPolicy
 from .normalize import Normalizer
@@ -29,7 +29,7 @@ def make_env(max_steps: int = 300):
         gymnasium env.
     """
     import gymnasium as gym
-    import gym_pusht  # noqa: F401  (registers the env)
+    import gym_pusht
 
     return gym.make(
         "gym_pusht/PushT-v0",
@@ -51,7 +51,6 @@ class EpisodeResult:
         rewards: per-step coverage (len == steps).
         frames: uint8 (H, W, 3) images if recorded, else None.
     """
-
     seed: int
     success: bool
     max_coverage: float
@@ -72,7 +71,6 @@ class EvalSummary:
         n_episodes: number of episodes.
         episodes: per-episode results, in seed order.
     """
-
     success_rate: float
     ci_low: float
     ci_high: float
@@ -93,8 +91,10 @@ def binomial_ci(successes: int, n: int, z: float = 1.96) -> tuple[float, float]:
     """
     if n <= 0:
         return 0.0, 1.0
+    
     if not 0 <= successes <= n:
         raise ValueError(f"successes must be in [0, n], got {successes} / {n}")
+    
     p = successes / n
     z2 = z * z
     denom = 1.0 + z2 / n
@@ -114,10 +114,13 @@ def load_policy_for_eval(checkpoint_path, device) -> tuple[nn.Module, dict]:
     """
     ckpt = load_checkpoint(checkpoint_path)
     cfg = ckpt["config"]
+
     model = BCPolicy(encoder=make_resnet18_encoder(), hidden_dim=cfg.hidden_dim, chunk_size=cfg.chunk_size)
     model.head.load_state_dict(ckpt["head"])
+    
     if ckpt.get("encoder") is not None:
         model.encoder.load_state_dict(ckpt["encoder"])
+
     model.to(device)
     model.eval()
     return model, ckpt["normalizer_stats"]
@@ -135,6 +138,7 @@ def build_agent_from_checkpoint(checkpoint_path, device=None) -> "BCAgent":
     device = torch.device(device) if device is not None else get_device()
     model, stats = load_policy_for_eval(checkpoint_path, device)
     cfg = load_checkpoint(checkpoint_path)["config"]
+
     return BCAgent(
         model,
         Normalizer.from_stats(stats),
@@ -159,15 +163,19 @@ class BCAgent:
             predicted chunk to execute before predicting again (1 <= n_execute <= K).
             None for a non-chunked model.
     """
-
     def __init__(self, model, normalizer, device, image_transform=None, n_execute: int | None = None):
-        raise NotImplementedError("TODO(core): see guide sections 7 and 10")
+        """
+        """
+        self.model = model
+        self.normalizer = normalizer
+        self.device = device
+        self.image_transform = image_transform
+        self.n_execute = n_execute
 
     def reset(self) -> None:
         """
         Clear any per-episode state.
         """
-        raise NotImplementedError("TODO(core): see guide sections 7 and 10")
 
     def act(self, obs_batch: dict) -> np.ndarray:
         """
@@ -178,7 +186,20 @@ class BCAgent:
         Returns:
             (2,) float action in env units, clipped to [0, 512].
         """
-        raise NotImplementedError("TODO(core): see guide sections 7 and 10")
+        image = obs_batch["observation.image"]
+        state = obs_batch["observation.state"]
+
+        if self.image_transform is not None:
+            image = self.image_transform(image)
+
+        normalized_image = self.normalizer.normalize_image(image).unsqueeze(0).to(self.device)
+        normalized_state = self.normalizer.normalize_state(state).unsqueeze(0).to(self.device)
+
+        with torch.no_grad():
+            pred = self.model(normalized_image, normalized_state)
+            pred_unnormalized = self.normalizer.unnormalize_action(pred)[0]
+            
+            return np.clip(pred_unnormalized.cpu().numpy(), 0, 512)
 
 def rollout(agent, env, seed: int, max_steps: int = 300, record: bool = False) -> EpisodeResult:
     """
@@ -198,7 +219,32 @@ def rollout(agent, env, seed: int, max_steps: int = 300, record: bool = False) -
         EpisodeResult with one reward per step taken (len(rewards) == steps) and frames as
         a list of uint8 (H, W, 3) images if record, else None.
     """
-    raise NotImplementedError("TODO(core): see guide section 7")
+    agent.reset()
+    obs, _ = env.reset(seed=seed)
+
+    rewards = []
+    frames = [] if record else None
+    for _ in range(max_steps):
+        batch = env_obs_to_batch(obs)
+        action = agent.act(batch)
+        obs, reward, terminated, truncated, _ = env.step(action)
+
+        rewards.append(float(reward))
+        if record:
+            frames.append(env.render())
+
+        if terminated or truncated:
+            break
+
+    max_coverage = max(rewards)
+    return EpisodeResult(
+        seed=seed,
+        success=max_coverage >= SUCCESS_THRESHOLD,
+        max_coverage=max_coverage,
+        steps=len(rewards),
+        rewards=rewards,
+        frames=frames
+    )
 
 def evaluate(agent, env, seeds: list[int], record_seeds: tuple[int, ...] = ()) -> EvalSummary:
     """
@@ -212,7 +258,27 @@ def evaluate(agent, env, seeds: list[int], record_seeds: tuple[int, ...] = ()) -
     Returns:
         EvalSummary with episodes in the order of seeds.
     """
-    raise NotImplementedError("TODO(core): see guide section 7")
+    results = []
+    for seed in seeds:
+        use_record = True if seed in record_seeds else False
+        episode_result = rollout(agent=agent,
+                                 env=env,
+                                 seed=seed,
+                                 record=use_record
+                                )
+        results.append(episode_result)
+
+    n_success = sum(e.success for e in results)
+    ci_low, ci_high = binomial_ci(successes=n_success, n=len(results))
+
+    return EvalSummary(
+        success_rate=n_success / len(results),
+        ci_low=ci_low,
+        ci_high=ci_high,
+        avg_max_coverage=sum(e.max_coverage for e in results) / len(results),
+        n_episodes=len(results),
+        episodes=results,
+    )
 
 def parse_seeds(spec: str) -> list[int]:
     """
@@ -249,6 +315,7 @@ def summary_to_dict(summary: EvalSummary) -> dict:
     d = asdict(summary)
     for ep in d["episodes"]:
         ep.pop("frames", None)
+
     return d
 
 def run_and_save(agent, seeds: list[int], record_seeds=(), out_dir=None, max_steps: int = 300, label: str = "") -> EvalSummary:
@@ -270,11 +337,13 @@ def run_and_save(agent, seeds: list[int], record_seeds=(), out_dir=None, max_ste
         summary = evaluate(agent, env, list(seeds), tuple(record_seeds))
     finally:
         env.close()
+
     if out_dir is not None:
         out = resolve_path(out_dir)
         out.mkdir(parents=True, exist_ok=True)
         with open(out / "summary.json", "w", encoding="utf-8") as f:
             json.dump({"label": label, "max_steps": max_steps, **summary_to_dict(summary)}, f, indent=2)
+        
         curves = {}
         for ep in summary.episodes:
             if ep.frames:
@@ -284,6 +353,7 @@ def run_and_save(agent, seeds: list[int], record_seeds=(), out_dir=None, max_ste
                 curves[f"seed {ep.seed} ({tag})"] = ep.rewards
         if curves:
             plot_coverage_over_time(curves, out / "coverage.png")
+            
     return summary
 
 def format_summary(summary: EvalSummary, label: str = "") -> str:
@@ -297,6 +367,7 @@ def format_summary(summary: EvalSummary, label: str = "") -> str:
         The line.
     """
     head = f"{label}: " if label else ""
+
     return (
         f"{head}success {summary.success_rate:.1%} "
         f"(95% CI {summary.ci_low:.1%}-{summary.ci_high:.1%}, n={summary.n_episodes}), "
