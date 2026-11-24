@@ -20,11 +20,13 @@ GRID = "#e6e5e0"
 AXIS = "#c3c2b7"
 BLUE = "#2a78d6"
 ORANGE = "#eb6834"
+AQUA = "#1baf7a"
 
 FINAL_RUNS = [
     ("Pretrained Diffusion Policy (`lerobot/diffusion_pusht`)", "runs/diffusion_pusht/eval_final/summary.json"),
     ("BC v0: frozen ResNet-18 features + MLP", "runs/bc_v0/eval/final_epoch_050/summary.json"),
     ("BC E4: ResNet-18 trained end to end, 84×84 crops", "runs/e4_end_to_end/eval/final_epoch_020/summary.json"),
+    ("BC E7: E4 + action chunking (8 predicted, 4 executed)", "runs/e7_chunk_e4/eval/final_epoch_020/summary.json"),
 ]
 
 DEV_RUNS = [
@@ -33,12 +35,16 @@ DEV_RUNS = [
     ("E3: 50% of train episodes", "runs/e3_frac50/eval/epoch_050/summary.json", "runs/e3_frac50/history.json"),
     ("E3: 25% of train episodes", "runs/e3_frac25/eval/epoch_050/summary.json", "runs/e3_frac25/history.json"),
     ("E4: end-to-end encoder", "runs/e4_end_to_end/eval/epoch_020/summary.json", "runs/e4_end_to_end/history.json"),
+    ("E7: v0 + action chunking", "runs/e7_chunk_v0/eval/epoch_050/summary.json", "runs/e7_chunk_v0/history.json"),
+    ("E7: E4 + action chunking", "runs/e7_chunk_e4/eval/epoch_020/summary.json", "runs/e7_chunk_e4/history.json"),
 ]
 
 COMPARE_SEED = 0
 DP_DEV = "runs/diffusion_pusht/eval"
 E4_DEV = "runs/e4_end_to_end/eval/epoch_020"
 E4_FAILURES = "runs/e4_end_to_end/eval/failures_0_9"
+E7_REPLAY = "runs/e7_chunk_e4/eval/cpu_replay_0_49"
+E7_SEED = 2
 
 # Failure labels from watching the failures_0_9 videos: seed -> (failure mode, what happens)
 FAILURE_LABELS = {
@@ -58,6 +64,7 @@ FAILURE_LABELS = {
 EXAMPLES = [
     (f"{E4_FAILURES}/seed_3.mp4", "e4_seed3_near_miss.gif"),
     (f"{E4_DEV}/seed_1.mp4", "e4_seed1_complete_failure.gif"),
+    (f"{E7_REPLAY}/seed_{E7_SEED}.mp4", f"e7_seed{E7_SEED}_success.gif"),
 ]
 
 def load_summary(path: str) -> dict | None:
@@ -134,6 +141,9 @@ def dev_table() -> str:
     for name, path, hist_path in DEV_RUNS:
         s = load_summary(path)
         hist = load_summary(hist_path) if hist_path != "-" else None
+        if s is None and hist is None and not hist_path.startswith("runs/bc_v0"):
+            lines.append(f"| {name} | - | *pending* | |")
+            continue
         val = f"{hist['best_val_loss']:.5f}" if hist else "-"
         if s is None:
             lines.append(f"| {name} | {val} | *pending* | |")
@@ -175,12 +185,14 @@ def style_axes(ax) -> None:
         ax.spines[side].set_color(AXIS)
     ax.tick_params(colors=INK_2)
 
-def coverage_plot(seed: int) -> Path | None:
+def coverage_plot(seed: int, runs: list[tuple[str, str, str]], name: str) -> Path | None:
     """
-    Coverage over time on one seed: Diffusion Policy vs. E4.
+    Coverage over time of several policies on the same seed.
 
     Args:
-        seed: env seed present in both dev summaries.
+        seed: env seed present in every summary.
+        runs: (label, folder with summary.json, color) per policy.
+        name: output file name in docs/media.
     Returns:
         The .png written, or None if a summary or the seed is missing.
     """
@@ -189,13 +201,12 @@ def coverage_plot(seed: int) -> Path | None:
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    dp, e4 = load_summary(f"{DP_DEV}/summary.json"), load_summary(f"{E4_DEV}/summary.json")
-    if dp is None or e4 is None or episode(dp, seed) is None or episode(e4, seed) is None:
-        return None
-    curves = [
-        ("Diffusion Policy", episode(dp, seed), BLUE),
-        ("BC E4", episode(e4, seed), ORANGE),
-    ]
+    curves = []
+    for label, folder, color in runs:
+        s = load_summary(f"{folder}/summary.json")
+        if s is None or episode(s, seed) is None:
+            return None
+        curves.append((label, episode(s, seed), color))
 
     fig, ax = plt.subplots(figsize=(7, 4.2), facecolor=SURFACE)
     style_axes(ax)
@@ -206,7 +217,7 @@ def coverage_plot(seed: int) -> Path | None:
         ax.plot(steps, ep["rewards"], color=color, linewidth=2, label=label, zorder=2)
         outcome = "success" if ep["success"] else f"max {ep['max_coverage']:.2f}"
         ax.annotate(f"{label}: {outcome}", (steps[-1], ep["rewards"][-1]), textcoords="offset points",
-                    xytext=(6, 0), va="center", fontsize=9, color=INK)
+                    xytext=(6, -12 if ep["success"] else 0), va="center", fontsize=9, color=INK)
     ax.set_xlim(0, 300)
     ax.set_ylim(0, 1.02)
     ax.set_xlabel("step", color=INK_2)
@@ -215,7 +226,7 @@ def coverage_plot(seed: int) -> Path | None:
     ax.legend(loc="lower right", frameon=False, labelcolor=INK_2)
     fig.tight_layout()
 
-    out = MEDIA / f"coverage_seed{seed}_dp_vs_e4.png"
+    out = MEDIA / name
     fig.savefig(out, dpi=150, facecolor=SURFACE)
     plt.close(fig)
     return out
@@ -277,7 +288,10 @@ def main() -> None:
     MEDIA.mkdir(parents=True, exist_ok=True)
 
     written = []
-    written.append(coverage_plot(COMPARE_SEED))
+    written.append(coverage_plot(COMPARE_SEED, [("Diffusion Policy", DP_DEV, BLUE), ("BC E4", E4_DEV, ORANGE)],
+                                 f"coverage_seed{COMPARE_SEED}_dp_vs_e4.png"))
+    written.append(coverage_plot(E7_SEED, [("BC E4", E4_DEV, ORANGE), ("BC E4 + chunking", E7_REPLAY, AQUA)],
+                                 f"coverage_seed{E7_SEED}_e4_vs_e7.png"))
     written.append(make_gif(f"{DP_DEV}/seed_{COMPARE_SEED}.mp4", f"dp_seed{COMPARE_SEED}_success.gif"))
     written.append(make_gif(f"{E4_DEV}/seed_{COMPARE_SEED}.mp4", f"e4_seed{COMPARE_SEED}_failure.gif", speed=2))
     for src, name in EXAMPLES:
